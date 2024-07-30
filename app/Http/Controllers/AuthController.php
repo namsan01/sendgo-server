@@ -17,12 +17,14 @@ class AuthController extends Controller
             'name' => 'required|string|max:255',
             'email' => 'required|string|email|max:255|unique:users',
             'password' => 'required|string|min:8',
+            'phone' => 'nullable|string|max:15'
         ]);
     
         $user = User::create([
             'name' => $request->name,
             'email' => $request->email,
             'password' => Hash::make($request->password),
+            'phone' => $request->phone,
         ]);
     
         return response()->json(['user' => $user], 201);
@@ -58,5 +60,15 @@ class AuthController extends Controller
     {
         Auth::user()->tokens()->delete();
         return response()->json(['message' => 'Logged out successfully']);
+    }
+
+    public function checkEmail(Request $request)
+    {
+        $request->validate([
+            'email' => 'required|string|email|max:255',
+        ]);
+
+        $exists = User::where('email', $request->email)->exists();
+        return response()->json(['exists' => $exists]);
     }
 }
