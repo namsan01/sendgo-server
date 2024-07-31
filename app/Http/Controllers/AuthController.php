@@ -16,15 +16,17 @@ class AuthController extends Controller
         $request->validate([
             'name' => 'required|string|max:255',
             'email' => 'required|string|email|max:255|unique:users',
+            'phone' => 'nullable|string|max:15',
             'password' => 'required|string|min:8',
-            'phone' => 'nullable|string|max:15'
         ]);
     
+        $phone = $request->phone ? str_replace('-', '', $request->phone) : null;
+
         $user = User::create([
             'name' => $request->name,
             'email' => $request->email,
+            'phone' => $phone,
             'password' => Hash::make($request->password),
-            'phone' => $request->phone,
         ]);
     
         return response()->json(['user' => $user], 201);
@@ -70,5 +72,43 @@ class AuthController extends Controller
 
         $exists = User::where('email', $request->email)->exists();
         return response()->json(['exists' => $exists]);
+    }
+
+    public function updateProfile(Request $request)
+    {
+        $user = Auth::user(); // 현재 로그인된 사용자
+
+        $request->validate([
+            'name' => 'nullable|string|max:255',
+            'email' => 'nullable|string|email|max:255|unique:users,email,' . $user->id,
+            'phone' => 'nullable|string|max:15',
+            'current_password' => 'nullable|string',
+            'new_password' => 'nullable|string|min:8|confirmed',
+        ]);
+
+        // 이름과 이메일 업데이트
+        if ($request->has('name')) {
+            $user->name = $request->name;
+        }
+
+        if ($request->has('email')) {
+            $user->email = $request->email;
+        }
+
+        if ($request->has('phone')) {
+            $user->phone = str_replace('-', '', $request->phone);
+        }
+
+        // 비밀번호 업데이트
+        if ($request->has('current_password') && $request->has('new_password')) {
+            if (!Hash::check($request->current_password, $user->password)) {
+                return response()->json(['message' => '현재 비밀번호가 일치하지 않습니다.'], 400);
+            }
+            $user->password = Hash::make($request->new_password);
+        }
+
+        $user->save();
+
+        return response()->json(['user' => $user], 200);
     }
 }

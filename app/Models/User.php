@@ -2,7 +2,6 @@
 
 namespace App\Models;
 
-// use Illuminate\Contracts\Auth\MustVerifyEmail;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
@@ -43,4 +42,24 @@ class User extends Authenticatable
         'email_verified_at' => 'datetime',
         'password' => 'hashed',
     ];
+
+    /**
+     * Accessor for phone attribute to format phone number with hyphens.
+     *
+     * @param string $value
+     * @return string
+     */
+    public function getPhoneAttribute($value)
+    {
+
+        $digits = preg_replace('/\D/', '', $value);
+
+        if (strlen($digits) === 10) {
+            return preg_replace('/^(\d{3})(\d{3})(\d{4})$/', '$1-$2-$3', $digits);
+        } elseif (strlen($digits) === 11) {
+            return preg_replace('/^(\d{3})(\d{4})(\d{4})$/', '$1-$2-$3', $digits);
+        }
+
+        return $value; 
+    }
 }

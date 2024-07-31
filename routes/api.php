@@ -5,9 +5,14 @@ use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\AuthController;
 use App\Http\Controllers\PaymentController;
 use App\Http\Controllers\CustomPasswordController;
+use App\Http\Controllers\UserController;
 
-Route::middleware('auth:sanctum')->get('/user', function (Request $request) {
-    return $request->user();
+Route::middleware('auth:sanctum')->group(function () {
+    // 사용자 정보 조회
+    Route::get('user', [UserController::class, 'show']);
+    
+    Route::post('upload-photo', [UserController::class, 'uploadPhoto']);
+    Route::post('update-profile', [UserController::class, 'updateProfile']);
 });
 
 Route::post('register', [AuthController::class, 'register']);
