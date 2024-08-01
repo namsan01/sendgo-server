@@ -47,17 +47,20 @@
 <body>
     <div class="container">
         <div class="header">
-            <h1>비밀번호 재설정 요청</h1>
         </div>
         <div class="content">
-            <p>안녕하세요,</p>
-            <p>비밀번호 재설정을 요청하셨습니다. 아래 버튼을 클릭하여 비밀번호를 재설정해주세요.</p>
+            <h1>안녕하세요 샌드고입니다!</h1>
+            <h2>고객님의 비밀번호 재설정 요청을 받았습니다. <br/> 아래 버튼을 클릭하여 비밀번호를 재설정하십시오.</h2>
+            <h2>
             <a href="{{ $url }}" class="button">비밀번호 재설정</a>
-            <p>이 요청을 하지 않으셨다면, 이 이메일을 무시하셔도 됩니다.</p>
+            </h2>
+            <h2>요청을 하지 않으셨다면, 고객센터에 문의하여 주십시오.</h2>
         </div>
         <div class="footer">
-            <p>&copy; {{ date('Y') }} My Application. All rights reserved.</p>
+            <h2>감사합니다 샌드고</h2>
+            <h3>&copy; {{ date('Y') }} My Application. All rights reserved.</h3>
         </div>
     </div>
 </body>
 </html>
+
