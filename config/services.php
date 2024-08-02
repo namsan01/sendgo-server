@@ -22,4 +22,9 @@ return [
         'api_key' => env('TOSS_PAYMENTS_SECRET_KEY'),
         'client_key' => env('TOSS_PAYMENTS_CLIENT_KEY'),
     ],
+    'kakao' => [
+        'client_id' => env('KAKAO_CLIENT_ID'),
+        'client_secret' => env('KAKAO_CLIENT_SECRET'),
+        'redirect' => env('KAKAO_REDIRECT_URI'),
+    ],
 ];
