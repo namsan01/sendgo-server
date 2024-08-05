@@ -116,12 +116,13 @@ class AuthController extends Controller
     public function redirectToProvider()
     {
         $clientId = env('KAKAO_CLIENT_ID');
-        $redirectUri = urlencode(env('KAKAO_REDIRECT_URI'));
+        $redirectUri = (env('KAKAO_REDIRECT_URI'));
         $authCodePath = 'https://kauth.kakao.com/oauth/authorize';
 
         $kakaoURL = $authCodePath . "?client_id={$clientId}&redirect_uri={$redirectUri}&response_type=code";
         return redirect($kakaoURL);
     }
+
     public function handleProviderCallback(Request $request)
     {
         $code = $request->query('code');
@@ -130,41 +131,66 @@ class AuthController extends Controller
         }
     
         $clientId = env('KAKAO_CLIENT_ID');
-        $clientSecret = env('KAKAO_CLIENT_SECRET');
         $redirectUri = env('KAKAO_REDIRECT_URI');
         $tokenUrl = 'https://kauth.kakao.com/oauth/token';
     
         try {
-            $response = Http::post($tokenUrl, [
-                'grant_type' => 'application/x-www-form-urlencoded',
-                'client_id' => $clientId,
-                'client_secret'=> $clientSecret,
-                'redirect_uri' => $redirectUri,
-                'code' => $code,
+            $response = Http::withHeaders([
+                'Content-Type' => 'application/x-www-form-urlencoded',
+            ])->post($tokenUrl, [
+                'form_params' => [
+                    'grant_type' => 'authorization_code',
+                    'client_id' => $clientId,
+                    'redirect_uri' => $redirectUri,
+                    'code' => $code,
+                ],
             ]);
     
             $data = $response->json();
     
             if (isset($data['access_token'])) {
-                return response()->json(['access_token' => $data['access_token']]);
+                $userInfo = $this->getUserInfo($data['access_token']);
+    
+                if ($userInfo && isset($userInfo['id'])) {
+                    $user = User::updateOrCreate(
+                        ['kakao_id' => $userInfo['id']],
+                        [
+                            'name' => $userInfo['properties']['nickname'] ?? 'Unknown',
+                            'email' => $userInfo['kakao_account']['email'] ?? null,
+                        ]
+                    );
+    
+                    Auth::login($user);
+                    $token = $user->createToken('auth_token')->plainTextToken;
+    
+                    return response()->json([
+                        'access_token' => $token,
+                        'token_type' => 'Bearer'
+                    ]);
+                } else {
+                    \Log::error('Kakao User Info Response Error', $userInfo);
+                    return response()->json(['message' => 'User info fetch failed'], 400);
+                }
             } else {
                 \Log::error('Kakao Token Response Error', $data);
                 return response()->json(['message' => 'Authentication failed'], 400);
             }
         } catch (\Exception $e) {
             \Log::error('Kakao Token Request Exception', ['exception' => $e->getMessage()]);
-            return response()->json(['message' => 'Authentication failed'], 400);
+            return response()->json(['message' => 'Authentication failed'], 500);
         }
     }
-    
-    
-
-    
     
 
     private function getUserInfo($accessToken)
     {
-        $response = Http::withToken($accessToken)->get('https://kapi.kakao.com/v2/user/me');
-        return $response->json();
+        try {
+            $response = Http::withToken($accessToken)->get('https://kapi.kakao.com/v2/user/me');
+            return $response->json();
+        } catch (\Exception $e) {
+            \Log::error('Kakao User Info Request Exception', ['exception' => $e->getMessage()]);
+            return null;
+        }
     }
 }
+
