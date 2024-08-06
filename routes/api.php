@@ -18,8 +18,12 @@ Route::post('register', [AuthController::class, 'register']);
 Route::post('/check-email', [AuthController::class, 'checkEmail']);
 Route::post('login', [AuthController::class, 'login']);
 Route::post('logout', [AuthController::class, 'logout'])->middleware('auth:sanctum');
+
+// 소셜 로그인
 Route::get('auth/kakao', [AuthController::class, 'redirectToProvider']);
-Route::get('auth/kakao/callback', [AuthController::class, 'handleProviderCallback']);
+Route::post('auth/kakao/callback', [AuthController::class, 'handleProviderCallback']);
+Route::get('auth/google', [AuthController::class, 'redirectToGoogle']);
+Route::post('auth/google/callback', [AuthController::class, 'handleGoogleCallback']);
 
 // 비밀번호 재설정 링크 전송
 Route::post('password/email', [CustomPasswordController::class, 'sendResetLinkEmail']);
