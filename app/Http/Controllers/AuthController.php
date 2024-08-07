@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Http;
 use Laravel\Socialite\Facades\Socialite;
 use App\Models\User;
 
@@ -77,7 +78,7 @@ class AuthController extends Controller
 
     public function updateProfile(Request $request)
     {
-        $user = Auth::user(); // 현재 로그인된 사용자
+        $user = Auth::user();
 
         $request->validate([
             'name' => 'nullable|string|max:255',
@@ -87,7 +88,7 @@ class AuthController extends Controller
             'new_password' => 'nullable|string|min:8|confirmed',
         ]);
 
-        // 이름과 이메일 업데이트
+
         if ($request->has('name')) {
             $user->name = $request->name;
         }
@@ -98,9 +99,7 @@ class AuthController extends Controller
 
         if ($request->has('phone')) {
             $user->phone = str_replace('-', '', $request->phone);
-        }
-
-        // 비밀번호 업데이트
+        }    
         if ($request->has('current_password') && $request->has('new_password')) {
             if (!Hash::check($request->current_password, $user->password)) {
                 return response()->json(['message' => '현재 비밀번호가 일치하지 않습니다.'], 400);
@@ -113,6 +112,88 @@ class AuthController extends Controller
         return response()->json(['user' => $user], 200);
     }
 
+    public function redirectToProvider()
+    {
+        $clientId = env('KAKAO_CLIENT_ID');
+        $redirectUri = (env('KAKAO_REDIRECT_URI'));
+        $authCodePath = 'https://kauth.kakao.com/oauth/authorize';
+
+        $kakaoURL = $authCodePath . "?client_id={$clientId}&redirect_uri={$redirectUri}&response_type=code";
+        return redirect($kakaoURL);
+    }
+
+    public function handleProviderCallback(Request $request)
+    {
+        $code = $request->input('code');
+        if (!$code) {
+            return response()->json(['message' => 'Authorization code not provided'], 400);
+        }
+    
+        $clientId = env('KAKAO_CLIENT_ID');
+        $redirectUri = env('KAKAO_REDIRECT_URI');
+        $tokenUrl = 'https://kauth.kakao.com/oauth/token';
+    
+        try {
+            $response = Http::asForm()->post($tokenUrl, [
+                'grant_type' => 'authorization_code',
+                'client_id' => $clientId,
+                'redirect_uri' => $redirectUri,
+                'code' => $code,
+            ]);
+    
+            $data = $response->json();
+    
+            if (isset($data['access_token'])) {
+                $userInfo = $this->getUserInfo($data['access_token']);
+    
+                if ($userInfo && isset($userInfo['id'])) {
+
+                    $existingUser = User::where('email', $userInfo['kakao_account']['email'])->first();
+    
+                    if ($existingUser) {
+                        $existingUser->name = $userInfo['properties']['nickname'] ?? 'Unknown';
+                        $existingUser->kakao_id = $userInfo['id']; 
+                        $existingUser->save();
+    
+                        Auth::login($existingUser);
+                        $token = $existingUser->createToken('auth_token')->plainTextToken;
+    
+                        return response()->json([
+                            'access_token' => $token,
+                            'token_type' => 'Bearer'
+                        ]);
+                    } else {
+                        $password = bcrypt('random_password_' . $userInfo['id']); 
+    
+                        $user = User::create([
+                            'kakao_id' => $userInfo['id'],
+                            'name' => $userInfo['properties']['nickname'] ?? 'Unknown',
+                            'email' => $userInfo['kakao_account']['email'] ?? null,
+                            'password' => $password,
+                        ]);
+    
+                        Auth::login($user);
+                        $token = $user->createToken('auth_token')->plainTextToken;
+    
+                        return response()->json([
+                            'access_token' => $token,
+                            'token_type' => 'Bearer',
+                        ]);
+                    }
+                } else {
+                    \Log::error('Kakao User Info Response Error', $userInfo);
+                    return response()->json(['message' => 'User info fetch failed'], 400);
+                }
+            } else {
+                \Log::error('Kakao Token Response Error', $data);
+                return response()->json(['message' => 'Authentication failed'], 400);
+            }
+        } catch (\Exception $e) {
+            \Log::error('Kakao Token Request Exception', ['exception' => $e->getMessage()]);
+            return response()->json(['message' => 'Authentication failed'], 500);
+        }
+    }
+    
     public function redirectToGoogle()
     {
         return Socialite::driver('google')->redirect();
@@ -120,44 +201,90 @@ class AuthController extends Controller
 
     public function handleGoogleCallback(Request $request)
     {
-        $user = Socialite::driver('google')->user();
-
-        // 구글 사용자 정보를 바탕으로 유저를 찾거나 새로 생성
-        $existingUser = User::where('email', $user->getEmail())->first();
-
-        if ($existingUser) {
-            // 이메일이 중복된 경우, 사용자 정보 업데이트
-            $existingUser->name = $user->getName();
-            $existingUser->google_id = $user->getId(); // 구글 ID를 업데이트
-            $existingUser->save();
-
-            // 로그인 처리
-            Auth::login($existingUser);
-            $token = $existingUser->createToken('auth_token')->plainTextToken;
-
-            return response()->json([
-                'access_token' => $token,
-                'token_type' => 'Bearer'
+        $code = $request->input('code');
+        if (!$code) {
+            return response()->json(['message' => 'Authorization code not provided'], 400);
+        }
+    
+        $clientId = env('GOOGLE_CLIENT_ID');
+        $clientSecret = env('GOOGLE_CLIENT_SECRET');
+        $redirectUri = env('GOOGLE_REDIRECT');
+        $tokenUrl = 'https://oauth2.googleapis.com/token';
+    
+        try {
+            $response = Http::asForm()->post($tokenUrl, [
+                'code' => $code,
+                'client_id' => $clientId,
+                'client_secret' => $clientSecret,
+                'redirect_uri' => $redirectUri,
+                'grant_type' => 'authorization_code',
             ]);
-        } else {
-            // 새로운 사용자 등록
-            $password = bcrypt('random_password_' . $user->getId()); // 임시 비밀번호
+    
+            $data = $response->json();
+    
+            // Log the response data for debugging
+            \Log::info('Google Token Response:', $data);
+    
+            if (isset($data['access_token'])) {
+                $accessToken = $data['access_token'];
+    
 
-            $newUser = User::create([
-                'google_id' => $user->getId(),
-                'name' => $user->getName(),
-                'email' => $user->getEmail(),
-                'password' => $password,
-            ]);
+                $userInfoUrl = 'https://www.googleapis.com/oauth2/v2/userinfo';
+                $userResponse = Http::withToken($accessToken)->get($userInfoUrl);
+                $userData = $userResponse->json();
+    
 
-            // 로그인 처리
-            Auth::login($newUser);
-            $token = $newUser->createToken('auth_token')->plainTextToken;
+                $existingUser = User::where('email', $userData['email'])->first();
+    
+                if ($existingUser) {
 
-            return response()->json([
-                'access_token' => $token,
-                'token_type' => 'Bearer',
-            ]);
+                    $existingUser->name = $userData['name'];
+                    $existingUser->google_id = $userData['id'];
+                    $existingUser->save();
+    
+
+                    Auth::login($existingUser);
+                    $token = $existingUser->createToken('auth_token')->plainTextToken;
+    
+                    return response()->json([
+                        'access_token' => $token,
+                        'token_type' => 'Bearer',
+                    ]);
+                } else {
+
+                    $newUser = User::create([
+                        'google_id' => $userData['id'],
+                        'name' => $userData['name'],
+                        'email' => $userData['email'],
+                        'password' => bcrypt('temporary_password_' . $userData['id']),
+                    ]);
+    
+
+                    Auth::login($newUser);
+                    $token = $newUser->createToken('auth_token')->plainTextToken;
+    
+                    return response()->json([
+                        'access_token' => $token,
+                        'token_type' => 'Bearer',
+                    ]);
+                }
+            } else {
+                return response()->json(['message' => 'Failed to retrieve access token', 'error' => $data], 400);
+            }
+        } catch (\Exception $e) {
+            return response()->json(['message' => 'An error occurred: ' . $e->getMessage()], 500);
+        }
+    }
+    
+
+    private function getUserInfo($accessToken)
+    {
+        try {
+            $response = Http::withToken($accessToken)->get('https://kapi.kakao.com/v2/user/me');
+            return $response->json();
+        } catch (\Exception $e) {
+            \Log::error('Kakao User Info Request Exception', ['exception' => $e->getMessage()]);
+            return null;
         }
     }
 }
