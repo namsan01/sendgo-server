@@ -34,6 +34,32 @@ class AuthController extends Controller
         return response()->json(['user' => $user], 201);
     }
 
+    public function deleteAccount(Request $request)
+    {
+        $user = Auth::user();
+        
+        $request->validate([
+            'current_password' => 'required|string',
+        ]);
+    
+        if (!Hash::check($request->current_password, $user->password)) {
+            return response()->json(['message' => '현재 비밀번호가 일치하지 않습니다.'], 400);
+        }
+    
+        try {
+     
+            $user->tokens()->delete();
+    
+     
+            $user->delete();
+    
+            return response()->json(['message' => '회원 탈퇴가 완료되었습니다.'], 200);
+        } catch (\Exception $e) {
+            \Log::error('User Deletion Error', ['exception' => $e->getMessage()]);
+            return response()->json(['message' => '회원 탈퇴 처리 중 오류가 발생했습니다.'], 500);
+        }
+    }
+
     public function login(Request $request)
     {
         $request->validate([
