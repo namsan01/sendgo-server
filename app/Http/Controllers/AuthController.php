@@ -6,6 +6,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Gate;
 use Laravel\Socialite\Facades\Socialite;
 use App\Models\User;
 
@@ -47,12 +48,8 @@ class AuthController extends Controller
         }
     
         try {
-     
             $user->tokens()->delete();
-    
-     
             $user->delete();
-    
             return response()->json(['message' => '회원 탈퇴가 완료되었습니다.'], 200);
         } catch (\Exception $e) {
             \Log::error('User Deletion Error', ['exception' => $e->getMessage()]);
@@ -83,7 +80,14 @@ class AuthController extends Controller
         Auth::login($user);
         $token = $user->createToken('auth_token')->plainTextToken;
 
-        return response()->json(['access_token' => $token, 'token_type' => 'Bearer']);
+        // 권한 확인
+        $isAdmin = Gate::allows('admin');
+
+        return response()->json([
+            'access_token' => $token,
+            'token_type' => 'Bearer',
+            'is_admin' => $isAdmin, 
+        ]);
     }
 
     public function logout()
@@ -114,7 +118,6 @@ class AuthController extends Controller
             'new_password' => 'nullable|string|min:8|confirmed',
         ]);
 
-
         if ($request->has('name')) {
             $user->name = $request->name;
         }
@@ -126,6 +129,7 @@ class AuthController extends Controller
         if ($request->has('phone')) {
             $user->phone = str_replace('-', '', $request->phone);
         }    
+
         if ($request->has('current_password') && $request->has('new_password')) {
             if (!Hash::check($request->current_password, $user->password)) {
                 return response()->json(['message' => '현재 비밀번호가 일치하지 않습니다.'], 400);
@@ -141,7 +145,7 @@ class AuthController extends Controller
     public function redirectToProvider()
     {
         $clientId = env('KAKAO_CLIENT_ID');
-        $redirectUri = (env('KAKAO_REDIRECT_URI'));
+        $redirectUri = env('KAKAO_REDIRECT_URI');
         $authCodePath = 'https://kauth.kakao.com/oauth/authorize';
 
         $kakaoURL = $authCodePath . "?client_id={$clientId}&redirect_uri={$redirectUri}&response_type=code";
@@ -173,7 +177,6 @@ class AuthController extends Controller
                 $userInfo = $this->getUserInfo($data['access_token']);
     
                 if ($userInfo && isset($userInfo['id'])) {
-
                     $existingUser = User::where('email', $userInfo['kakao_account']['email'])->first();
     
                     if ($existingUser) {
@@ -219,7 +222,7 @@ class AuthController extends Controller
             return response()->json(['message' => 'Authentication failed'], 500);
         }
     }
-    
+
     public function redirectToGoogle()
     {
         return Socialite::driver('google')->redirect();
@@ -248,27 +251,21 @@ class AuthController extends Controller
     
             $data = $response->json();
     
-            // Log the response data for debugging
             \Log::info('Google Token Response:', $data);
     
             if (isset($data['access_token'])) {
                 $accessToken = $data['access_token'];
-    
-
                 $userInfoUrl = 'https://www.googleapis.com/oauth2/v2/userinfo';
                 $userResponse = Http::withToken($accessToken)->get($userInfoUrl);
                 $userData = $userResponse->json();
     
-
                 $existingUser = User::where('email', $userData['email'])->first();
     
                 if ($existingUser) {
-
                     $existingUser->name = $userData['name'];
                     $existingUser->google_id = $userData['id'];
                     $existingUser->save();
     
-
                     Auth::login($existingUser);
                     $token = $existingUser->createToken('auth_token')->plainTextToken;
     
@@ -277,7 +274,6 @@ class AuthController extends Controller
                         'token_type' => 'Bearer',
                     ]);
                 } else {
-
                     $newUser = User::create([
                         'google_id' => $userData['id'],
                         'name' => $userData['name'],
@@ -285,7 +281,6 @@ class AuthController extends Controller
                         'password' => bcrypt('temporary_password_' . $userData['id']),
                     ]);
     
-
                     Auth::login($newUser);
                     $token = $newUser->createToken('auth_token')->plainTextToken;
     
@@ -301,7 +296,6 @@ class AuthController extends Controller
             return response()->json(['message' => 'An error occurred: ' . $e->getMessage()], 500);
         }
     }
-    
 
     private function getUserInfo($accessToken)
     {

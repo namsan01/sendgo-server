@@ -49,8 +49,7 @@ class ContentController extends Controller
      */
     public function index()
     {
-        // 모든 문의 내역을 가져오고 작성자 정보도 함께 조회
-        $contents = Content::with('user')->latest()->get(); // 최신 콘텐츠부터 가져옴
+        $contents = Content::with('user')->latest()->get();
         return response()->json($contents);
     }
 
